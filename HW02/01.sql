@@ -1,22 +1,22 @@
--- 1. Все товары, в которых в название есть пометка urgent или название начинается с Animal
+п»ї-- 1. Р’СЃРµ С‚РѕРІР°СЂС‹, РІ РєРѕС‚РѕСЂС‹С… РІ РЅР°Р·РІР°РЅРёРµ РµСЃС‚СЊ РїРѕРјРµС‚РєР° urgent РёР»Рё РЅР°Р·РІР°РЅРёРµ РЅР°С‡РёРЅР°РµС‚СЃСЏ СЃ Animal
 SELECT *
 FROM Warehouse.StockItems
 WHERE StockItemName LIKE '%urgent%' OR StockItemName LIKE 'Animal%'
 
--- 2. Поставщиков, у которых не было сделано ни одного заказа (потом покажем как это делать через подзапрос, сейчас сделайте через JOIN)
+-- 2. РџРѕСЃС‚Р°РІС‰РёРєРѕРІ, Сѓ РєРѕС‚РѕСЂС‹С… РЅРµ Р±С‹Р»Рѕ СЃРґРµР»Р°РЅРѕ РЅРё РѕРґРЅРѕРіРѕ Р·Р°РєР°Р·Р° (РїРѕС‚РѕРј РїРѕРєР°Р¶РµРј РєР°Рє СЌС‚Рѕ РґРµР»Р°С‚СЊ С‡РµСЂРµР· РїРѕРґР·Р°РїСЂРѕСЃ, СЃРµР№С‡Р°СЃ СЃРґРµР»Р°Р№С‚Рµ С‡РµСЂРµР· JOIN)
 SELECT S.*
 FROM Purchasing.Suppliers AS S
 LEFT JOIN Purchasing.PurchaseOrders AS O ON S.SupplierID=O.SupplierID
 WHERE O.PurchaseOrderID IS NULL
 
-/* 3. Продажи с названием месяца, в котором была продажа, номером квартала, к которому относится продажа, включите также к какой трети года 
-относится дата - каждая треть по 4 месяца, дата забора заказа должна быть задана, с ценой товара более 100$ либо количество единиц товара более 20.*/
+/* 3. РџСЂРѕРґР°Р¶Рё СЃ РЅР°Р·РІР°РЅРёРµРј РјРµСЃСЏС†Р°, РІ РєРѕС‚РѕСЂРѕРј Р±С‹Р»Р° РїСЂРѕРґР°Р¶Р°, РЅРѕРјРµСЂРѕРј РєРІР°СЂС‚Р°Р»Р°, Рє РєРѕС‚РѕСЂРѕРјСѓ РѕС‚РЅРѕСЃРёС‚СЃСЏ РїСЂРѕРґР°Р¶Р°, РІРєР»СЋС‡РёС‚Рµ С‚Р°РєР¶Рµ Рє РєР°РєРѕР№ С‚СЂРµС‚Рё РіРѕРґР° 
+РѕС‚РЅРѕСЃРёС‚СЃСЏ РґР°С‚Р° - РєР°Р¶РґР°СЏ С‚СЂРµС‚СЊ РїРѕ 4 РјРµСЃСЏС†Р°, РґР°С‚Р° Р·Р°Р±РѕСЂР° Р·Р°РєР°Р·Р° РґРѕР»Р¶РЅР° Р±С‹С‚СЊ Р·Р°РґР°РЅР°, СЃ С†РµРЅРѕР№ С‚РѕРІР°СЂР° Р±РѕР»РµРµ 100$ Р»РёР±Рѕ РєРѕР»РёС‡РµСЃС‚РІРѕ РµРґРёРЅРёС† С‚РѕРІР°СЂР° Р±РѕР»РµРµ 20.*/
 
-SELECT FORMAT(O.OrderDate, 'MMMM', 'RU-ru') AS [Месяц]
-	, DATEPART(QUARTER, O.OrderDate) AS [Квартал]
-	, CEILING(CONVERT(FLOAT, DATEPART(M, O.OrderDate)) / 4) AS [Треть]
-	, COALESCE(OL.UnitPrice, I.UnitPrice) AS [Цена]
-	, OL.Quantity AS [Количество]
+SELECT FORMAT(O.OrderDate, 'MMMM', 'RU-ru') AS [РњРµСЃСЏС†]
+	, DATEPART(QUARTER, O.OrderDate) AS [РљРІР°СЂС‚Р°Р»]
+	, CEILING(CONVERT(FLOAT, DATEPART(M, O.OrderDate)) / 4) AS [РўСЂРµС‚СЊ]
+	, COALESCE(OL.UnitPrice, I.UnitPrice) AS [Р¦РµРЅР°]
+	, OL.Quantity AS [РљРѕР»РёС‡РµСЃС‚РІРѕ]
 FROM Sales.Orders AS O
 INNER JOIN Sales.OrderLines AS OL ON OL.OrderID=O.OrderID
 INNER JOIN Warehouse.StockItems AS I ON I.StockItemID=OL.StockItemID
@@ -24,24 +24,24 @@ WHERE O.PickingCompletedWhen IS NOT NULL
 	AND (COALESCE(OL.UnitPrice, I.UnitPrice) > 100 OR OL.Quantity > 20)
 
 
-/* Добавьте вариант этого запроса с постраничной выборкой пропустив первую 1000 и отобразив следующие 100 записей. Соритровка должна быть по 
-номеру квартала, трети года, дате продажи. */
-SELECT FORMAT(O.OrderDate, 'MMMM', 'RU-ru') AS [Месяц]
-	, DATEPART(QUARTER, O.OrderDate) AS [Квартал]
-	, CEILING(CONVERT(FLOAT, DATEPART(M, O.OrderDate)) / 4) AS [Треть]
-	, COALESCE(OL.UnitPrice, I.UnitPrice) AS [Цена]
-	, OL.Quantity AS [Количество]
+/* Р”РѕР±Р°РІСЊС‚Рµ РІР°СЂРёР°РЅС‚ СЌС‚РѕРіРѕ Р·Р°РїСЂРѕСЃР° СЃ РїРѕСЃС‚СЂР°РЅРёС‡РЅРѕР№ РІС‹Р±РѕСЂРєРѕР№ РїСЂРѕРїСѓСЃС‚РёРІ РїРµСЂРІСѓСЋ 1000 Рё РѕС‚РѕР±СЂР°Р·РёРІ СЃР»РµРґСѓСЋС‰РёРµ 100 Р·Р°РїРёСЃРµР№. РЎРѕСЂРёС‚СЂРѕРІРєР° РґРѕР»Р¶РЅР° Р±С‹С‚СЊ РїРѕ 
+РЅРѕРјРµСЂСѓ РєРІР°СЂС‚Р°Р»Р°, С‚СЂРµС‚Рё РіРѕРґР°, РґР°С‚Рµ РїСЂРѕРґР°Р¶Рё. */
+SELECT FORMAT(O.OrderDate, 'MMMM', 'RU-ru') AS [РњРµСЃСЏС†]
+	, DATEPART(QUARTER, O.OrderDate) AS [РљРІР°СЂС‚Р°Р»]
+	, CEILING(CONVERT(FLOAT, DATEPART(M, O.OrderDate)) / 4) AS [РўСЂРµС‚СЊ]
+	, COALESCE(OL.UnitPrice, I.UnitPrice) AS [Р¦РµРЅР°]
+	, OL.Quantity AS [РљРѕР»РёС‡РµСЃС‚РІРѕ]
 FROM Sales.Orders AS O
 INNER JOIN Sales.OrderLines AS OL ON OL.OrderID=O.OrderID
 INNER JOIN Warehouse.StockItems AS I ON I.StockItemID=OL.StockItemID
 WHERE O.PickingCompletedWhen IS NOT NULL
 	AND (COALESCE(OL.UnitPrice, I.UnitPrice) > 100 OR OL.Quantity > 20)
-ORDER BY [Квартал], [Треть], O.OrderDate OFFSET 1000 ROWS FETCH NEXT 100 ROWS ONLY
+ORDER BY [РљРІР°СЂС‚Р°Р»], [РўСЂРµС‚СЊ], O.OrderDate OFFSET 1000 ROWS FETCH NEXT 100 ROWS ONLY
 
-/* 4. Заказы поставщикам, которые были исполнены за 2014й год с доставкой Road Freight или Post, добавьте название поставщика, имя контактного 
-лица принимавшего заказ */
+/* 4. Р—Р°РєР°Р·С‹ РїРѕСЃС‚Р°РІС‰РёРєР°Рј, РєРѕС‚РѕСЂС‹Рµ Р±С‹Р»Рё РёСЃРїРѕР»РЅРµРЅС‹ Р·Р° 2014Р№ РіРѕРґ СЃ РґРѕСЃС‚Р°РІРєРѕР№ Road Freight РёР»Рё Post, РґРѕР±Р°РІСЊС‚Рµ РЅР°Р·РІР°РЅРёРµ РїРѕСЃС‚Р°РІС‰РёРєР°, РёРјСЏ РєРѕРЅС‚Р°РєС‚РЅРѕРіРѕ 
+Р»РёС†Р° РїСЂРёРЅРёРјР°РІС€РµРіРѕ Р·Р°РєР°Р· */
 
-SELECT S.SupplierName AS [Поставщик], P.FullName AS [Принимавший заказ]
+SELECT S.SupplierName AS [РџРѕСЃС‚Р°РІС‰РёРє], P.FullName AS [РџСЂРёРЅРёРјР°РІС€РёР№ Р·Р°РєР°Р·]
 FROM Purchasing.PurchaseOrders AS PO
 INNER JOIN Application.DeliveryMethods AS DM ON PO.DeliveryMethodID=DM.DeliveryMethodID
 INNER JOIN Purchasing.Suppliers AS S ON S.SupplierID=PO.SupplierID
@@ -51,19 +51,18 @@ WHERE (DM.DeliveryMethodName = 'Road Freight' OR DM.DeliveryMethodName = 'Post')
 	AND DATEPART(YEAR, ST.FinalizationDate) = 2014
 
 
--- 5. 10 последних по дате продаж с именем клиента и именем сотрудника, который оформил заказ.
-SELECT TOP 10 Client.FullName AS [Клиент], Salesperson.FullName AS [Сотрудник], O.OrderDate
+-- 5. 10 РїРѕСЃР»РµРґРЅРёС… РїРѕ РґР°С‚Рµ РїСЂРѕРґР°Р¶ СЃ РёРјРµРЅРµРј РєР»РёРµРЅС‚Р° Рё РёРјРµРЅРµРј СЃРѕС‚СЂСѓРґРЅРёРєР°, РєРѕС‚РѕСЂС‹Р№ РѕС„РѕСЂРјРёР» Р·Р°РєР°Р·.
+SELECT TOP 10 Customer.CustomerName AS [РљР»РёРµРЅС‚], Salesperson.FullName AS [РЎРѕС‚СЂСѓРґРЅРёРє], O.OrderDate
 FROM Sales.Orders AS O
-INNER JOIN Application.People AS Client ON Client.PersonID=O.ContactPersonID
+INNER JOIN Sales.Customers AS Customer ON Customer.CustomerID=O.CustomerID
 INNER JOIN Application.People AS Salesperson ON Salesperson.PersonID=O.SalespersonPersonID
 ORDER BY O.OrderDate DESC
 
 
--- 6. Все ид и имена клиентов и их контактные телефоны, которые покупали товар Chocolate frogs 250g
-
-SELECT DISTINCT Client.PersonID, Client.PhoneNumber
+-- 6. Р’СЃРµ РёРґ Рё РёРјРµРЅР° РєР»РёРµРЅС‚РѕРІ Рё РёС… РєРѕРЅС‚Р°РєС‚РЅС‹Рµ С‚РµР»РµС„РѕРЅС‹, РєРѕС‚РѕСЂС‹Рµ РїРѕРєСѓРїР°Р»Рё С‚РѕРІР°СЂ Chocolate frogs 250g
+SELECT DISTINCT C.CustomerID AS [РР” РєР»РёРµРЅС‚Р°], C.CustomerName AS [РљР»РёРµРЅС‚], C.PhoneNumber AS [РљРѕРЅС‚Р°РєС‚РЅС‹Р№ С‚РµР»РµС„РѕРЅ]
 FROM Warehouse.StockItems AS I
 INNER JOIN Sales.OrderLines AS OL ON OL.StockItemID=I.StockItemID
 INNER JOIN Sales.Orders AS O ON O.OrderID=OL.OrderID
-INNER JOIN Application.People AS Client ON Client.PersonID=O.ContactPersonID
+INNER JOIN Sales.Customers AS C ON C.CustomerID=O.CustomerID
 WHERE I.StockItemName='Chocolate frogs 250g'
