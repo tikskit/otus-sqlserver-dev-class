@@ -162,12 +162,14 @@ FROM Sales.Invoices
 ORDER BY TotalSumm DESC
 
 /*
+Что делает запрос:
 Для счетов (Invoice), по которым стоимость превышает 27000 выводит ИД и дату счета, ФИО продавца, а также саму эту стоимость.
 
 Если заказ (Order) забран, то также будет выведена стоимость всего заказа. Цена позиций в счете и заказе может быть разная, поэтому 
 выводится разная сумма из счета и из заказа.
 
-Насчет оптимизации.
+Оптимизация читабельности.
+
 1. Вынести поздапрос SalesTotals в CTE для улучшения читабельности
 2. Конструкция (см. ниже) кажется сложной для понимания, посмотрю можно ли её упростить
        (
@@ -196,7 +198,7 @@ LEFT JOIN (
 Теперь видно, что из неё можно сделать CTE аналогичную SalesTotals
 
 
-Выборка из Application.People в принципе не очень сложно выглядит, но её тоже можно немного привести к более , поместив в FROM
+Выборка из Application.People в принципе не очень сложно выглядит, но её тоже можно изменить, чтобы она выглядела единообразно в запросе, поместив в FROM
 (
            SELECT People.FullName
            FROM Application.People
@@ -232,3 +234,76 @@ JOIN SalesTotals ON Invoices.InvoiceID = SalesTotals.InvoiceID
 JOIN Application.People ON People.PersonID = Invoices.SalespersonPersonID
 LEFT JOIN OrdersTotal ON OrdersTotal.OrderID = Invoices.OrderId
 ORDER BY TotalSumm DESC
+
+
+/*
+Оптимизация плана выполнения. 
+
+План выполнения запроса находится в файле 5-init-plan.sqlplan
+
+В принципе, понятно почему для подзапроса (см. ниже) выполняется полное сканнирование таблицы. Насколько я понимаю, с эти ничего не поделать. 
+
+             SELECT InvoiceId,
+                    SUM(Quantity * UnitPrice) AS TotalSumm
+             FROM Sales.InvoiceLines
+             GROUP BY InvoiceId
+             HAVING SUM(Quantity * UnitPrice) > 27000
+
+Далее этот набор данных соединяется с таблицей Invoces. Причем, происходит сканнирование кластерного индекса PK_Sales_Invoices. Что тоже непонятно, 
+почему бы не использовать поиск в индексе, ведь соединяемый подзапрос возвращает только 8 строк.
+
+Среди прочих, отрабатывалась идея насчет заузить количество (отфильтровать) или переиспользовать выбираемые строки в одном из подзапросов. 
+С поздапросом из InvoiceLines ничего заузить не получалось, но казалось, что можно в OrderLines.
+
+Для этого добавил табличную переменную, которая будет содержать и строки из Invoces, прошедшие отбор и OrderID. Чтобы не сканнировать всю таблицу Orders, 
+а выбрать из неё только те строки, которые относятся к прошедшим фильтрацию из Invoces
+
+
+*/
+
+-- Заполняем эту таблицу
+DECLARE @Invoiced Table(InvoiceID INT, OrderID INT, TotalSumm DECIMAL(18,2))
+
+/*План этого запроса находится в файле 5-fill-vartable.sqlplan*/
+INSERT INTO @Invoiced(InvoiceID, OrderID, TotalSumm)
+SELECT InvoiceLines.InvoiceId, OrderID, SUM(Quantity * UnitPrice) AS TotalSumm
+FROM Sales.InvoiceLines
+INNER JOIN Sales.Invoices ON InvoiceLines.InvoiceID=Invoices.InvoiceID
+GROUP BY InvoiceLines.InvoiceId, Invoices.OrderID
+HAVING SUM(Quantity * UnitPrice) > 27000
+
+/*План этого запроса находится в файле 5-final.sqlplan*/
+SELECT Invoices.InvoiceID,
+       Invoices.InvoiceDate,
+       (
+           SELECT People.FullName
+           FROM Application.People
+           WHERE People.PersonID = Invoices.SalespersonPersonID
+       ) AS SalesPersonName,
+       SalesTotals.TotalSumm AS TotalSummByInvoice,
+       (
+           SELECT SUM(OrderLines.PickedQuantity * OrderLines.UnitPrice)
+           FROM Sales.OrderLines
+           WHERE OrderLines.OrderId =
+                                      (
+                                          SELECT Orders.OrderId
+                                          FROM Sales.Orders
+										  INNER JOIN @Invoiced AS I ON I.OrderID=Orders.OrderID /* тут мы уже не сканнируем всю таблицу Orders, а выбираем только те строки, которые используются в @Invoiced */
+                                          WHERE Orders.PickingCompletedWhen IS NOT NULL
+                                                AND Orders.OrderId = Invoices.OrderId
+                                      )
+       ) AS TotalSummForPickedItems
+FROM Sales.Invoices
+JOIN @Invoiced AS SalesTotals ON SalesTotals.InvoiceID=Invoices.InvoiceID
+ORDER BY TotalSumm DESC
+
+
+/*
+Заполнение @Invoiced остается тяжелым процессом, но зато последующая выборка, кажется, значительно упрощается - многие нидексы используются. 
+Например, почему-то стал использовать индекс PK_Application_People. В изначальном запросе было сканнирование индекса IX_Application_People_FullName
+
+
+Ну и в результате, если на одном плане показать все три запроса (начальный, заполнение временной таблицы, конечный запрос), то один первый оказывается
+более дорогой, чем два остальных. Из этого, по-моему, можно сделать вывод, что оптимизация произошла
+
+*/
