@@ -106,17 +106,21 @@ SELECT StockItemID, StockItemName, Brand
 	, COUNT(*) OVER(PARTITION BY LEFT(StockItemName, 1)) [Количество в звисимости от первой буквы]
 	, LEAD(StockItemID) OVER(ORDER BY StockItemName) [ID следующей строки при сортировке по StockItemName]
 	, LAG(StockItemID) OVER(ORDER BY StockItemName) [ID предыдущей строки при сортировке по StockItemName]
-	, ISNULL(CAST(LAG(StockItemID, 2) OVER(ORDER BY StockItemName) AS VARCHAR(10)), 'No items') [ID 2 строки назад]
+	, ISNULL(LAG(StockItemName, 2) OVER(ORDER BY StockItemName), 'No items') [Название товара 2 строки назад]
 	, NTILE(30) OVER(ORDER BY TypicalWeightPerUnit) [TypicalWeightPerUnitGroups]
 FROM Warehouse.StockItems
+ORDER BY StockItemName
 
 
+/*
+4. По каждому сотруднику выведите последнего клиента, которому сотрудник что-то продал
+В результатах должны быть ид и фамилия сотрудника, ид и название клиента, дата продажи, сумму сделки
+*/
 
---4. По каждому сотруднику выведите последнего клиента, которому сотрудник что-то продал
-
-SELECT People.FullName, Customers.CustomerName
+SELECT People.PersonID, People.FullName, Customers.CustomerID, Customers.CustomerName, R.TransactionDate [Дата продажи], 
+	R.TransactionAmount [Сумма сделки]
 FROM (
-	SELECT CustomerTransactions.CustomerID, Invoices.SalespersonPersonID, TransactionDate
+	SELECT CustomerTransactions.CustomerID, Invoices.SalespersonPersonID, TransactionDate, TransactionAmount
 		, ROW_NUMBER() OVER(PARTITION BY SalespersonPersonID ORDER BY TransactionDate DESC) AS RN
 	
 	FROM Sales.CustomerTransactions 
@@ -146,3 +150,32 @@ FROM (
 ) AS R
 INNER JOIN Sales.Customers ON Customers.CustomerID=R.CustomerID
 WHERE R.RN <= 2
+
+-- Попробуйте, как вариант, написать запрос, что в случае нескольких покупок одного товара, выводилась информация обо всех этих покупках.
+
+/*
+Ну вот, мне было интересно построить такой запрос. Он в поле "Даты покупок товара" выводит через запятую даты, когда покупатель покупал этот товар. 
+Товары, купленные несколько раз одним покуптелем, отображаются в единичном экземпляре, как и должно быть.
+Честно говоря, надеялся, что STRING_AGG тоже является аналитической функцией, но пришлось поместить её в подзапрос.
+*/
+SELECT Customers.CustomerID, Customers.CustomerName
+	, R.StockItemID, R.StockItemName, R.UnitPrice
+	, R.D_RNK [Ранг по стоимости у покупателя]
+	, R.PurchasesCount [Количество покупок товара]
+	, (
+		SELECT STRING_AGG(I1.InvoiceDate, ', ') WITHIN GROUP (ORDER BY I1.InvoiceDate) 
+		FROM Sales.InvoiceLines AS IL1
+		INNER JOIN Sales.Invoices AS I1 ON I1.InvoiceID=IL1.InvoiceLineID
+		WHERE IL1.StockItemID=R.StockItemID AND I1.CustomerID=R.CustomerID
+	) [Даты покупок товара]
+FROM (
+	SELECT DISTINCT Invoices.CustomerID, InvoiceLines.StockItemID, StockItems.StockItemName, StockItems.UnitPrice--, Invoices.InvoiceDate
+		, DENSE_RANK() OVER (PARTITION BY Invoices.CustomerID ORDER BY StockItems.UnitPrice DESC, InvoiceLines.StockItemID ASC) AS D_RNK
+		, COUNT(*) OVER(PARTITION BY Invoices.CustomerID, InvoiceLines.StockItemID) AS PurchasesCount
+	FROM Sales.InvoiceLines
+	INNER JOIN Sales.Invoices ON Invoices.InvoiceID=InvoiceLines.InvoiceLineID
+	INNER JOIN Warehouse.StockItems ON InvoiceLines.StockItemID=StockItems.StockItemID
+) AS R
+INNER JOIN Sales.Customers ON Customers.CustomerID=R.CustomerID
+WHERE R.D_RNK <= 2
+ORDER BY R.CustomerID, D_RNK, R.StockItemID
