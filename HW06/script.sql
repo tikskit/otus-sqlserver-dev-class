@@ -65,26 +65,26 @@ SQL Server parse and compile time:
 
 -- 2. Вывести список 2х самых популярных продуктов (по кол-ву проданных) в каждом месяце за 2016й год (по 2 самых популярных продукта в каждом месяце)
 
-; WITH ItemPerMonthCount(MonthNo, StockItemID, Cnt) AS
+;WITH ItemPerMonthCount(MonthNo, StockItemID, Quantity) AS
 (
-	SELECT MONTH(Invoices.InvoiceDate), InvoiceLines.StockItemID, COUNT(*)
+	SELECT MONTH(Invoices.InvoiceDate), InvoiceLines.StockItemID, SUM(InvoiceLines.Quantity)
 	FROM Sales.InvoiceLines
 	INNER JOIN Sales.Invoices ON Invoices.InvoiceID=InvoiceLines.InvoiceID
 	WHERE YEAR(Invoices.InvoiceDate) = 2016
 	GROUP BY MONTH(Invoices.InvoiceDate), InvoiceLines.StockItemID
 ), 
-RangedSales(StockItemID, MonthNo, RN) AS
+RangedSales(StockItemID, MonthNo, Quantity, RN) AS
 (
 	SELECT ItemPerMonthCount.StockItemID
 		, ItemPerMonthCount.MonthNo
-		, ROW_NUMBER() OVER(PARTITION BY ItemPerMonthCount.MonthNo ORDER BY Cnt DESC) AS RN
+		, ItemPerMonthCount.Quantity
+		, ROW_NUMBER() OVER(PARTITION BY ItemPerMonthCount.MonthNo ORDER BY Quantity DESC) AS RN
 	FROM ItemPerMonthCount
 )
-SELECT RangedSales.MonthNo, StockItems.StockItemName
+SELECT RangedSales.MonthNo, StockItems.StockItemName, RangedSales.Quantity
 FROM RangedSales
 INNER JOIN Warehouse.StockItems ON StockItems.StockItemID=RangedSales.StockItemID
 WHERE RangedSales.RN <= 2
-
 
 /*
 3. Функции одним запросом
