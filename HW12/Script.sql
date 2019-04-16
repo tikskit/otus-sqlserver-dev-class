@@ -1,4 +1,4 @@
-﻿-- Написать функцию возвращающую Клиента с набольшей суммой покупки.
+﻿-- 1) Написать функцию возвращающую Клиента с набольшей суммой покупки.
 
 IF OBJECT_ID('Sales.GetBestBuyer') IS NOT NULL
 	DROP PROCEDURE Sales.GetBestBuyer;
@@ -19,6 +19,8 @@ BEGIN
 	SNAPSHOT можно было бы использовать, если данный отчет требуется получать моментально, а в системе существует
 	множество транзакции, которы надолго блокируют данные монопольными блокировками и ждать их освобождения 
 	недопустимо.
+
+	во всех приведенных тут ХП и функциях используется READ COMMITED по тем же самым причинам
 	
 	*/
 
@@ -36,7 +38,14 @@ BEGIN
 END
 GO
 
--- Написать хранимую процедуру с входящим параметром СustomerID, выводящую сумму покупки по этому клиенту.
+/*
+2) Написать хранимую процедуру с входящим параметром СustomerID, выводящую сумму покупки по этому клиенту.
+
+Использовать таблицы :
+Sales.Customers
+Sales.Invoices
+Sales.InvoiceLines
+*/
 
 /*
 	В данной ХП тот же самый уровень изоляции транзакций (READ COMMITED) по тем же самым причинам
@@ -61,32 +70,7 @@ BEGIN
 END
 GO
 
--- 1) Создать 1 функцию и 1 хранимую процедуру
-
-/*ХП уже создал выше*/
-
-/*Это функция для задания 08, где требовалось выводить только уточненное название клиента. */
-
-IF OBJECT_ID('Sales.GetCustomerSpecName') IS NOT NULL 
-	DROP FUNCTION Sales.GetCustomerSpecName;
-GO
-
-CREATE FUNCTION Sales.GetCustomerSpecName(@CustomerName NVARCHAR(100))
-RETURNS NVARCHAR(100)
-AS
-BEGIN
-	DECLARE @FirstBracketPos INT = CHARINDEX('(', @CustomerName);
-	DECLARE @LastBracketPos INT = CHARINDEX(')', @CustomerName, @FirstBracketPos + 1);
-	DECLARE @Res NVARCHAR(100);
-	IF (@FirstBracketPos = 0) OR (@LastBracketPos = 0)
-		SET @Res = @CustomerName;
-	ELSE
-		SET @Res = SUBSTRING(@CustomerName, @FirstBracketPos + 1, @LastBracketPos - @FirstBracketPos - 1);
-	RETURN @Res;
-END;
-GO
-
--- 2) Cоздать одинаковую функцию и хранимую процедуру, посмотреть в чем разница в производительности и почему
+-- 3) Cозда5ть одинаковую функцию и хранимую процедуру, посмотреть в чем разница в производительности и почему
 
 /*Допишем UDF Sales.GetCustomerPurchasesTotalUDF, а в качестве аналогичной ХП  будем использовать 
 Sales.GetCustomerPurchasesTotal */
@@ -117,9 +101,47 @@ DECLARE @MValue MONEY;
 SET @MValue = Sales.GetCustomerPurchasesTotalUDF(@CustomerID);
 PRINT @MValue;
 
+
 EXEC Sales.GetCustomerPurchasesTotal @CustomerID, @MValue OUT;
 PRINT @MValue;
 
+/*
+Планы выполнения ХП и UDF абсолютно одинаковые (файлы GetCustomerPurchasesTotal.sqlplan и GetCustomerPurchasesTotalUDF.sqlplan), поэтому разницы в производительности нет. 
+*/
 
--- 3) Создайте табличную функцию покажите как ее можно вызвать для каждой строки result set'а без использования цикла. 
 
+-- 4) Создайте табличную функцию покажите как ее можно вызвать для каждой строки result set'а без использования цикла. 
+
+/*Напишем UDF, которая будет выводить 3 самых дорогих заказа пользователя по его идентификатору. И затем запрос, использующий её */
+
+
+IF OBJECT_ID('Sales.GetCustomerTop3Orders') IS NOT NULL 
+	DROP FUNCTION Sales.GetCustomerTop3Orders;
+GO
+
+CREATE FUNCTION Sales.GetCustomerTop3Orders(@CustomerID INT)
+RETURNS TABLE
+AS
+	RETURN(	
+		SELECT TOP 3 Invoices.InvoiceID, SUM(InvoiceLines.Quantity * ISNULL(InvoiceLines.UnitPrice, StockItems.UnitPrice)) AS Total
+		FROM Sales.Invoices 
+		INNER JOIN Sales.InvoiceLines ON Invoices.InvoiceID=InvoiceLines.InvoiceID
+		INNER JOIN Warehouse.StockItems ON StockItems.StockItemID=InvoiceLines.StockItemID
+		WHERE Invoices.CustomerID=@CustomerID
+		GROUP BY Invoices.InvoiceID
+		ORDER BY Total DESC
+	)
+GO
+
+
+SELECT Customers.CustomerName, TOP3.InvoiceID, TOP3.Total,
+	CASE DENSE_RANK() OVER (PARTITION BY Customers.CustomerName ORDER BY TOP3.Total)
+		WHEN 1 THEN 'First'
+		WHEN 2 THEN 'Second'
+		WHEN 3 THEN 'Third'
+	END AS 'Order rank'
+FROM Sales.Customers
+CROSS APPLY(
+	SELECT InvoiceID, Total
+	FROM Sales.GetCustomerTop3Orders(Customers.CustomerID)
+	) AS TOP3
