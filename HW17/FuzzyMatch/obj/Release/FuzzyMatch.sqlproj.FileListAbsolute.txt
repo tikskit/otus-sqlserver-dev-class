@@ -1,0 +1,5 @@
+E:\OTUS\MS SQL Server\Artifacts\otus-sqlserver-dev-class\HW17\FuzzyMatch\bin\Release\FuzzyMatch.dacpac
+E:\OTUS\MS SQL Server\Artifacts\otus-sqlserver-dev-class\HW17\FuzzyMatch\bin\Release\FuzzyMatch.dll
+E:\OTUS\MS SQL Server\Artifacts\otus-sqlserver-dev-class\HW17\FuzzyMatch\bin\Release\FuzzyMatch.pdb
+E:\OTUS\MS SQL Server\Artifacts\otus-sqlserver-dev-class\HW17\FuzzyMatch\obj\Release\FuzzyMatch.dll
+E:\OTUS\MS SQL Server\Artifacts\otus-sqlserver-dev-class\HW17\FuzzyMatch\obj\Release\FuzzyMatch.pdb
